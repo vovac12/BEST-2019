@@ -147,7 +147,7 @@ if v_0 > calc_V(V_w, -g * m)[0] * 5:
     v_0 = calc_V(V_w, -g * m)[0] * 5
     verbose_print("Начальная скорость слишком велика, "+
             "скорость изменена на {:0.3f}".format(v_0), 2)
-direct = np.array([[1, 0, 1]]).reshape(-1, 3)
+direct = np.array([[1, 0, 0]]).reshape(-1, 3)
 t, cords, vels, accs = calc_traect(h, t_step, v_0, m, direct)
 
 res = cords[-1, 0]
