@@ -32,7 +32,7 @@ parser.add_argument('-O', '--output', action='store',
         help='Файл с траекторией и скоростями (result.csv)',
         type=str, default='result.csv')
 parser.add_argument('-v', '--verbose', action='store',
-        help='Выводит больше информации', default=0,
+        help='Выводит больше информации', default=1,
         type=int, nargs='?', const=1)
 
 args = parser.parse_args()
@@ -59,6 +59,9 @@ def simple_quadratic_solve(a, b, c):
     if D < 0:
         return 0
     return (-b - D ** (1/2)) / a / 2
+
+def calc_angle(v):
+    return 180 / np.pi * np.arccos(v.dot(np.array([1, 0, 0])) / (v**2).sum() ** (1/2))
 
 def find_coefs(X, y):
     return np.linalg.pinv(X.T.dot(X)).dot(X.T).dot(y)
@@ -131,7 +134,7 @@ def calc_traect(h, t_step, v_0, m, direct):
         vall.append(valln1)
         if cords[-1][:, 1].max() < max_y - 100:
             max_y -= 100
-            verbose_print("Y: {:0.4f}".format(cords[-1][:, 1].max()), 1)
+            verbose_print("Y: {:0.4f}".format(cords[-1][:, 1].max()), 2)
         if cords[-1][:, 1].min() < 10 and not low_h:
             t /= 10
             low_h = True
@@ -143,13 +146,14 @@ t_step = calc_time() / 2000
 if v_0 > calc_V(V_w, -g * m)[0] * 5:
     v_0 = calc_V(V_w, -g * m)[0] * 5
     verbose_print("Начальная скорость слишком велика, "+
-            "скорость изменена на {:0.3f}".format(v_0), 1)
-direct = np.array([[1, 0, 0]]).reshape(-1, 3)
+            "скорость изменена на {:0.3f}".format(v_0), 2)
+direct = np.array([[1, 0, 1]]).reshape(-1, 3)
 t, cords, vels, accs = calc_traect(h, t_step, v_0, m, direct)
 
 res = cords[-1, 0]
 
-verbose_print("Результат: ({:0.3f}, {:0.3f}, {:0.3f})".format(*-res), 1)
+verbose_print("Результат: ({:0.3f}, {:0.3f}), Угол {:0.3f}".format(-res[0],
+                                            -res[2], calc_angle(direct)[0]), 1)
 
 res = pd.DataFrame(np.hstack([np.array(t).reshape(-1, 1),
                             cords[:, 0] - res,
