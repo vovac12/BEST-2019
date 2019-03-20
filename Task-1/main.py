@@ -14,28 +14,71 @@ parser = argparse.ArgumentParser('BEST-2019[1]',
         description='Программа вычисляет координаты и направление сброса груза',
         epilog='\nNo licence')
 
-parser.add_argument('-F', action='store',
+parser.add_argument(
+        '-F',
+        action='store',
         help='Файл с данными о аэродинамической силе (F.csv)',
-        default='F.csv', type=str)
-parser.add_argument('-W', '--Wind', action='store',
+        default='F.csv',
+        type=str)
+parser.add_argument(
+        '-W',
+        '--Wind',
+        action='store',
         help='Файл с данными о ветре (Wind.csv)',
-        default='Wind.csv', type=str)
-parser.add_argument('-H', '--height', action='store',
-        help='Начальная высота (1400)', default=1400., type=float)
-parser.add_argument('-S', '--speed', action='store',
-        help='Начальная скорость (240)', default=250., type=float)
-parser.add_argument('-M', '--mass', action='store',
-        help='Масса тела (100)', default=100., type=float)
-parser.add_argument('-P', '--picture', action='store',
-        help='Сохранить изображение', type=str)
-parser.add_argument('-O', '--output', action='store',
-        help='Файл с траекторией и скоростями (result.csv)',
-        type=str, default='result.csv')
-parser.add_argument('-v', '--verbose', action='store',
-        help='Выводит больше информации', default=1,
-        type=int, nargs='?', const=1)
+        default='Wind.csv',
+        type=str)
+parser.add_argument(
+        '-H',
+        '--height',
+        action='store',
+        help='Начальная высота (1400)',
+        default=1400.,
+        type=float)
+parser.add_argument(
+        '-S',
+        '--speed',
+        action='store',
+        help='Начальная скорость (240)',
+        default=250.,
+        type=float)
+parser.add_argument(
+        '-M',
+        '--mass',
+        action='store',
+        help='Масса тела (100)',
+        default=100.,
+        type=float)
+parser.add_argument(
+        '-P',
+        '--picture',
+        action='store',
+        help='Сохранить изображения',
+        type=str)
+parser.add_argument(
+        '-O',
+        '--output',
+        action='store',
+        help='Файл с траекторией и скоростями (result<n>.csv)',
+        type=str,
+        default='result')
+parser.add_argument(
+        '-v',
+        '--verbose',
+        action='store',
+        help='Выводит больше информации',
+        default=1,
+        type=int,
+        nargs='?',
+        const=1)
+parser.add_argument(
+        '-a',
+        '--angle',
+        type=str,
+        help='Список углов через запятую',
+        default='0')
 
 args = parser.parse_args()
+args.angle = np.array(list(map(float, args.angle.split(','))))
 
 def verbose_print(message, level=1, **kwargs):
     if args.verbose >= level:
@@ -61,7 +104,12 @@ def simple_quadratic_solve(a, b, c):
     return (-b - D ** (1/2)) / a / 2
 
 def calc_angle(v):
-    return 180 / np.pi * np.arccos(v.dot(np.array([1, 0, 0])) / (v**2).sum() ** (1/2))
+    return np.degrees(np.arccos(v.dot(np.array([1, 0, 0])) / np.linalg.norm(v)))
+
+def angle_to_vector(a):
+    a = np.deg2rad(a)
+    return np.vstack([np.cos(a), np.zeros_like(a), np.sin(a)]).T
+
 
 def find_coefs(X, y):
     return np.linalg.pinv(X.T.dot(X)).dot(X.T).dot(y)
@@ -70,37 +118,36 @@ def calc_regr(w, x):
     return x.dot(w.T)
 
 def calc_Fa(w, x):
-    return calc_regr(w, np.vstack([x, x**2]).T)
+    return calc_regr(w, np.hstack([x, x**2]))
 
 def calc_V(w, x):
-    return calc_regr(w, np.vstack([x, x**(1/2)]).T)
+    return calc_regr(w, np.hstack([x, x**(1/2)]))
 
 
 interp_x = scipy.interpolate.interpolate.interp1d(Wind.Y, Wind.Wx, 'cubic')
 interp_z = scipy.interpolate.interpolate.interp1d(Wind.Y, Wind.Wz, 'cubic')
 interp_F = scipy.interpolate.interpolate.interp1d(F.V, F.Fa, 'cubic')
-F_w = find_coefs(np.vstack([F.V, F.V**2]).T, F.Fa)
-V_w = find_coefs(np.vstack([F.Fa, F.Fa**(1/2)]).T, F.V)
+F_w = find_coefs(np.vstack([F.V, F.V**2]).T, F.Fa).reshape(1, -1)
+V_w = find_coefs(np.vstack([F.Fa, F.Fa**(1/2)]).T, F.V).reshape(1, -1)
 
 def vec_len(vec):
     return (np.sum(vec ** 2, 1) ** (1/2)).reshape(-1, 1)
 
 def aero_acc(v_vel):
     vel = vec_len(v_vel)
-    if vel == 0:
-        vel = 1
+    vel[vel == 0] = 1
     return v_vel / vel * (calc_Fa(F_w, vel) / m)
 
 def Wind_vel(y):
-    if y > 1400:
-        y = 1400
+    y = np.array(y)
+    y[y > 1400] = 1400
     return np.vstack([interp_x(y), np.zeros_like(y), interp_z(y)]).T
 
 def Body_acc(y, v_vel):
     return  -aero_acc(v_vel) + np.array([0, g, 0])
 
 def calc_time():
-    return float((m/-g) ** (1/2) + h / calc_V(V_w, -g * m)[0])
+    return float((m/-g) ** (1/2) + h / calc_V(V_w, np.array(-g * m).reshape(1, 1))[0])
 
 def calc_traect(h, t_step, v_0, m, direct):
     cords = [np.array([[0, h, 0] for i in range(direct.shape[0])])]
@@ -147,36 +194,40 @@ if v_0 > calc_V(V_w, -g * m)[0] * 5:
     v_0 = calc_V(V_w, -g * m)[0] * 5
     verbose_print("Начальная скорость слишком велика, "+
             "скорость изменена на {:0.3f}".format(v_0), 2)
-direct = np.array([[1, 0, 0]]).reshape(-1, 3)
+direct = angle_to_vector(args.angle)
 t, cords, vels, accs = calc_traect(h, t_step, v_0, m, direct)
 
-res = cords[-1, 0]
+for i in range(direct.shape[0]):
+    res = cords[-1, i]
+    verbose_print("Результат: ({:0.3f}, {:0.3f}), Угол {:0.3f}".format(-res[0],
+                                                -res[2],
+                                                calc_angle(direct[i])), 1)
 
-verbose_print("Результат: ({:0.3f}, {:0.3f}), Угол {:0.3f}".format(-res[0],
-                                            -res[2], calc_angle(direct)[0]), 1)
-
-res = pd.DataFrame(np.hstack([np.array(t).reshape(-1, 1),
-                            cords[:, 0] - res,
-                            vels[:, 0]]),
-                            columns=('T', 'X', 'Y', 'Z', 'Vx', 'Vy', 'Vz'))
-res.to_csv(args.output, index=None)
+for i in range(args.angle.shape[0]):
+    res = cords[-1, i]
+    df = pd.DataFrame(np.hstack([np.array(t).reshape(-1, 1),
+                                cords[:, i] - res,
+                                vels[:, i]]),
+                                columns=('T', 'X', 'Y', 'Z', 'Vx', 'Vy', 'Vz'))
+    df.to_csv(args.output + str(i + 1) + '.csv', index=None)
 
 if args.picture is not None:
     from matplotlib import pyplot as plt
-    plt.rc('figure', figsize=(15, 12))
-    k = 0
-    for i in [cords - res, vels, accs]:
-        for j in range(3):
-            plt.subplot(3, 3, k * 3 + j + 1)
-            plt.plot(t, i[:, 0, j], label='speed' if k == 1 else None)
-            if k == 1 and j != 1:
-                x = cords[:, 0, 1]
-                x[x < 0] = 0
-                plt.plot(t, [interp_x, None, interp_z][j](x), label='wind')
-                plt.legend()
-            plt.title(['Координата', 'Скорость', 'Ускорение'][k] + ' по '
-                                                        + ['X', 'Y', 'Z'][j])
-        k += 1
-    plt.tight_layout()
-    plt.savefig(args.picture)
+    for pic in range(args.angle.shape[0]):
+        plt.figure(figsize=(15, 12))
+        k = 0
+        for i in [cords - res, vels, accs]:
+            for j in range(3):
+                plt.subplot(3, 3, k * 3 + j + 1)
+                plt.plot(t, i[:, pic, j], label='speed' if k == 1 else None)
+                if k == 1 and j != 1:
+                    x = cords[:, 0, 1]
+                    x[x < 0] = 0
+                    plt.plot(t, [interp_x, None, interp_z][j](x), label='wind')
+                    plt.legend()
+                plt.title(['Координата', 'Скорость', 'Ускорение'][k] + ' по '
+                                                            + ['X', 'Y', 'Z'][j])
+            k += 1
+        plt.tight_layout()
+        plt.savefig(args.picture + str(pic + 1) + '.png')
 
