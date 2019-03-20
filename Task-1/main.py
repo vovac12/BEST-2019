@@ -9,10 +9,10 @@ try:
 except BaseException as e:
     print('Ошибка импорта: ' + str(e))
     exit(1)
-
+epilog = "\nExample: ./main.py -P pic -a 0,90,180 -H 1300"
 parser = argparse.ArgumentParser('BEST-2019[1]',
         description='Программа вычисляет координаты и направление сброса груза',
-        epilog='\nNo licence')
+        epilog=epilog)
 
 parser.add_argument(
         '-F',
